@@ -1,0 +1,9 @@
+[package]
+name = "xact"
+version = "0.1.0"
+authors = ["Ted Blackman <ted.blackman@gmail.com>"]
+
+[dependencies]
+
+[dependencies.zmq]
+git = "https://github.com/erickt/rust-zmq.git"
