@@ -1,13 +1,11 @@
 extern crate zmq;
 
 use std::cmp;
-use std::io;
 use std::time::{Duration, Instant};
 
 struct TimedZMQTransaction {
   ctx: zmq::Context,
   sock: zmq::Socket,
-  timeout: Duration,
   time_to_die: Instant
 }
 
@@ -23,38 +21,23 @@ impl TimedZMQTransaction {
     Ok(TimedZMQTransaction {
       ctx: ctx,
       sock: sock,
-      timeout: timeout,
       time_to_die: now + timeout
     })
   }
 
-  pub fn get_remaining_time(&self, timeout: Option<Duration>) -> Duration {
-    if self.time_to_die <= Instant::now() {
-      return Duration::new(0, 0);
-    }
-
-    let max_remaining = self.time_to_die.duration_since(Instant::now());
-    match timeout {
-      Some(duration) => cmp::min(duration, max_remaining),
-      None => max_remaining
-    }
-  }
-
   pub fn send_multipart(&mut self, parts: &[&[u8]], timeout: Option<Duration>) -> Result<(), zmq::Error> {
-    let timeout_ms = (self.get_remaining_time(timeout).as_secs() * 1000) as i64;
-    try!(zmq::poll(&mut [self.sock.as_poll_item(zmq::POLLOUT)], timeout_ms));
+    try!(self.poll(timeout, zmq::POLLOUT));
 
     let num_parts = parts.len();
     for (index, part) in parts.iter().enumerate() {
-      let  flags = if index < num_parts - 1 { zmq::SNDMORE|zmq::DONTWAIT } else { zmq::DONTWAIT };
+      let flags = if index < num_parts - 1 { zmq::SNDMORE|zmq::DONTWAIT } else { zmq::DONTWAIT };
       try!(self.sock.send(part, flags));
     }
     Ok(())
   }
 
   pub fn recv_multipart(&mut self, timeout: Option<Duration>) -> Result<Vec<Vec<u8>>, zmq::Error> {
-    let timeout_ms = (self.get_remaining_time(timeout).as_secs() * 1000) as i64;
-    try!(zmq::poll(&mut [self.sock.as_poll_item(zmq::POLLIN)], timeout_ms));
+    try!(self.poll(timeout, zmq::POLLIN));
 
     let mut parts: Vec<Vec<u8>> = vec![];
     loop {
@@ -69,6 +52,27 @@ impl TimedZMQTransaction {
 
     Ok(parts)
   }
+
+  pub fn poll(&mut self, timeout: Option<Duration>, events: i16) -> Result<i32, zmq::Error> {
+    let timeout_ms = self.get_remaining_ms(timeout);
+    zmq::poll(&mut [self.sock.as_poll_item(events)], timeout_ms)
+  }
+
+  fn get_remaining_ms(&self, timeout: Option<Duration>) -> i64 {
+    (self.get_remaining_duration(timeout).as_secs() * 1000) as i64
+  }
+
+  fn get_remaining_duration(&self, timeout: Option<Duration>) -> Duration {
+    if self.time_to_die <= Instant::now() {
+      Duration::new(0, 0)
+    } else {
+      let max_remaining = self.time_to_die.duration_since(Instant::now());
+      match timeout {
+        Some(duration) => cmp::min(duration, max_remaining),
+        None => max_remaining
+      }
+    }
+  }
 }
 
 fn send_message<F>(endpoint: &str, message_id: &str, data: &[u8], timeout: Duration, consistent: bool, on_progress: F) -> Result<(), zmq::Error>
@@ -76,7 +80,6 @@ fn send_message<F>(endpoint: &str, message_id: &str, data: &[u8], timeout: Durat
 
   let mut transactor = try!(TimedZMQTransaction::new(&endpoint, timeout));
   try!(transactor.send_multipart(&[data], Some(timeout)));
-
 
   Ok(())
 }
