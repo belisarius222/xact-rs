@@ -159,10 +159,15 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   let data_length = data.len() as u64;
   let data_size_str: String = format!("{}", data_length);
   let data_size_msg = data_size_str.as_bytes();
-  try!(transactor.send_multipart(&[b"START", blob_id.as_bytes(), data_size_msg], None));
-  let start_response_parts = try!(transactor.recv_multipart(None));
 
+  print!("Sending start message...");
+  try!(transactor.send_multipart(&[b"START", blob_id.as_bytes(), data_size_msg], None));
+  println!("Sent.");
+
+  print!("Waiting for start response...");
+  let start_response_parts = try!(transactor.recv_multipart(None));
   assert!(start_response_parts.len() == 3, "{}", start_response_parts.len());
+  println!("Received.");
 
   let chunk_size_msg = try!(match (start_response_parts[1].as_slice(), start_response_parts[2].as_slice()) {
     (b"NOGO", _) => Err(XactError::new(ErrorKind::NOGO, "Endpoint was not ready.")),
