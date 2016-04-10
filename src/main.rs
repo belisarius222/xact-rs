@@ -8,6 +8,9 @@ use std::fmt;
 use std::cmp;
 use std::time::{Duration, Instant};
 
+extern crate serialize;
+use serialize::hex::ToHex;
+
 extern crate rustc;
 use rustc::util::sha2::{Sha256, Digest};
 
@@ -238,9 +241,9 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
     }
   }
 
-  let hash_bytes = hash.result_bytes();
-  println!("Sending hash: {:?} ...", hash_bytes);
-  try!(transactor.send_multipart(&[b"END", hash_bytes.as_slice()], None));
+  let hash_hex: String = hash.result_bytes().to_hex();
+  println!("Sending hash: {:?} ...", hash_hex);
+  try!(transactor.send_multipart(&[b"END", hash_hex.as_bytes()], None));
   println!("Sent.");
 
   loop {
