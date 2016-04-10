@@ -218,7 +218,10 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
       assert!(chunk_request_parts.len() >= 2, "{}", chunk_request_parts.len());
 
       match chunk_request_parts[1].as_slice() {
-        b"TOKEN" => { chunks_requested += 1 },
+        b"TOKEN" => {
+          println!("Received chunk request.");
+          chunks_requested += 1;
+        },
         _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk request")); }
       };
     }
