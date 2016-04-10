@@ -95,26 +95,38 @@ impl TimedZMQTransaction {
   }
 
   pub fn send_multipart(&mut self, parts: &[&[u8]], timeout: Option<Duration>) -> Result<(), zmq::Error> {
-    try!(self.poll(timeout, zmq::POLLOUT));
+    println!("send_multipart()");
+    let poll_result = try!(self.poll(timeout, zmq::POLLOUT));
+    if poll_result == 0 {
+      return Err(XactError::new(ErrorKind::TIMEOUT, "send_multipart() timed out."));
+    }
 
     let num_parts = parts.len();
     for (index, part) in parts.iter().enumerate() {
       let flags = if index < num_parts - 1 { zmq::SNDMORE|zmq::DONTWAIT } else { zmq::DONTWAIT };
       try!(self.sock.send(part, flags));
+      println!("Sent part.");
     }
     Ok(())
   }
 
   pub fn recv_multipart(&mut self, timeout: Option<Duration>) -> Result<Vec<Vec<u8>>, zmq::Error> {
-    try!(self.poll(timeout, zmq::POLLIN));
+    println!("recv_multipart()");
+    let poll_result = try!(self.poll(timeout, zmq::POLLIN));
+    if poll_result == 0 {
+      return Err(XactError::new(ErrorKind::TIMEOUT, "recv_multipart() timed out."));
+    }
 
     let mut parts: Vec<Vec<u8>> = vec![];
     loop {
+      println!("Waiting to receive a part.");
       let part = try!(self.sock.recv_bytes(zmq::DONTWAIT));
       parts.push(part);
+      println!("Received a part.");
 
       let more_parts = try!(self.sock.get_rcvmore());
       if !more_parts {
+        println!("No more parts.");
         break;
       }
     }
