@@ -143,7 +143,11 @@ impl TimedZMQTransaction {
   }
 
   fn get_remaining_ms(&self, timeout: Option<Duration>) -> i64 {
-    (self.get_remaining_duration(timeout).as_secs() * 1000) as i64
+    let remaining = self.get_remaining_duration(timeout);
+    let secs = remaining.as_secs();
+    let subsec_nanos = remaining.subsec_nanos();
+    let millis = secs * 1000 + (subsec_nanos / 1e6 as u32) as u64;
+    millis as i64
   }
 
   fn get_remaining_duration(&self, timeout: Option<Duration>) -> Duration {
