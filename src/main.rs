@@ -98,7 +98,7 @@ impl TimedZMQTransaction {
     println!("send_multipart()");
     let poll_result = try!(self.poll(timeout, zmq::POLLOUT));
     if poll_result == 0 {
-      return Err(XactError::new(ErrorKind::TIMEOUT, "send_multipart() timed out."));
+      return Err(zmq::Error::EBUSY);
     }
 
     let num_parts = parts.len();
@@ -114,7 +114,7 @@ impl TimedZMQTransaction {
     println!("recv_multipart()");
     let poll_result = try!(self.poll(timeout, zmq::POLLIN));
     if poll_result == 0 {
-      return Err(XactError::new(ErrorKind::TIMEOUT, "recv_multipart() timed out."));
+      return Err(zmq::Error::EBUSY);
     }
 
     let mut parts: Vec<Vec<u8>> = vec![];
