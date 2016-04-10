@@ -152,7 +152,7 @@ impl TimedZMQTransaction {
       Duration::new(0, 0)
     } else {
       let max_remaining = self.time_to_die.duration_since(Instant::now());
-      println!("max_remaining: {}", max_remaining.as_secs() * 1000);
+      println!("max_remaining: {:?}", max_remaining);
       match timeout {
         Some(duration) => cmp::min(duration, max_remaining),
         None => max_remaining
