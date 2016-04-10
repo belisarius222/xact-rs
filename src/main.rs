@@ -136,6 +136,7 @@ impl TimedZMQTransaction {
 
   pub fn poll(&mut self, timeout: Option<Duration>, events: i16) -> Result<i32, zmq::Error> {
     let timeout_ms = self.get_remaining_ms(timeout);
+    println!("About to poll for {} ms.", timeout_ms);
     zmq::poll(&mut [self.sock.as_poll_item(events)], timeout_ms)
   }
 
