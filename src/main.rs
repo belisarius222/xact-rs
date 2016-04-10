@@ -148,9 +148,11 @@ impl TimedZMQTransaction {
 
   fn get_remaining_duration(&self, timeout: Option<Duration>) -> Duration {
     if self.time_to_die <= Instant::now() {
+      println!("Time's up.");
       Duration::new(0, 0)
     } else {
       let max_remaining = self.time_to_die.duration_since(Instant::now());
+      println!("max_remaining: {}", max_remaining);
       match timeout {
         Some(duration) => cmp::min(duration, max_remaining),
         None => max_remaining
@@ -267,7 +269,7 @@ fn main() {
   match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { println!("{}", s) }) {
     Ok(result_bytes) => { println!("{}", result_bytes.len()); },
     Err(e) => {
-      println!("{}", e.description());
+      println!("Error: {}", e.description());
       panic!(e)
     }
   };
