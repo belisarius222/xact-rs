@@ -266,6 +266,9 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 fn main() {
   match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { println!("{}", s) }) {
     Ok(result_bytes) => { println!("{}", result_bytes.len()); },
-    Err(e) => panic!(e)
+    Err(e) => {
+      println!("{}", e.description());
+      panic!(e)
+    }
   };
 }
