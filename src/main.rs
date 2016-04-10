@@ -149,9 +149,14 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
   let mut transactor = try!(TimedZMQTransaction::new(&endpoint, timeout));
 
+  print!("Sending PING...");
   let ping_timeout = Some(Duration::from_millis(500));
   try!(transactor.send_multipart(&[b"PING"], ping_timeout));
+  println!("Sent.");
+
+  print!("Receiving PING response...");
   let ping_response_parts = try!(transactor.recv_multipart(ping_timeout));
+  println!("Received.");
 
   assert!(ping_response_parts.len() == 2, "PING response had wrong number of parts: {}", ping_response_parts.len());
   assert!(ping_response_parts[1] == b"PONG", "Invalid PING response");
