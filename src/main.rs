@@ -98,6 +98,7 @@ impl TimedZMQTransaction {
     println!("send_multipart()");
     let poll_result = try!(self.poll(timeout, zmq::POLLOUT));
     if poll_result == 0 {
+      println!("Poll failed.");
       return Err(zmq::Error::EBUSY);
     }
 
@@ -114,6 +115,7 @@ impl TimedZMQTransaction {
     println!("recv_multipart()");
     let poll_result = try!(self.poll(timeout, zmq::POLLIN));
     if poll_result == 0 {
+      println!("Poll failed.");
       return Err(zmq::Error::EBUSY);
     }
 
@@ -262,7 +264,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 }
 
 fn main() {
-  match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(500), false, |s| { println!("{}", s) }) {
+  match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { println!("{}", s) }) {
     Ok(result_bytes) => { println!("{}", result_bytes.len()); },
     Err(e) => panic!(e)
   };
