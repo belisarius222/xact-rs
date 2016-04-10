@@ -277,4 +277,6 @@ fn main() {
       panic!(e)
     }
   };
+
+  println!("Done.");
 }
