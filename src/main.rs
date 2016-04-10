@@ -95,10 +95,9 @@ impl TimedZMQTransaction {
   }
 
   pub fn send_multipart(&mut self, parts: &[&[u8]], timeout: Option<Duration>) -> Result<(), zmq::Error> {
-    println!("send_multipart()");
     let poll_result = try!(self.poll(timeout, zmq::POLLOUT));
     if poll_result == 0 {
-      println!("Poll failed.");
+      println!("Poll failed in send_multipart().");
       return Err(zmq::Error::EBUSY);
     }
 
@@ -106,29 +105,24 @@ impl TimedZMQTransaction {
     for (index, part) in parts.iter().enumerate() {
       let flags = if index < num_parts - 1 { zmq::SNDMORE|zmq::DONTWAIT } else { zmq::DONTWAIT };
       try!(self.sock.send(part, flags));
-      println!("Sent part.");
     }
     Ok(())
   }
 
   pub fn recv_multipart(&mut self, timeout: Option<Duration>) -> Result<Vec<Vec<u8>>, zmq::Error> {
-    println!("recv_multipart()");
     let poll_result = try!(self.poll(timeout, zmq::POLLIN));
     if poll_result == 0 {
-      println!("Poll failed.");
+      println!("Poll failed in recv_multipart().");
       return Err(zmq::Error::EBUSY);
     }
 
     let mut parts: Vec<Vec<u8>> = vec![];
     loop {
-      println!("Waiting to receive a part.");
       let part = try!(self.sock.recv_bytes(zmq::DONTWAIT));
       parts.push(part);
-      println!("Received a part.");
 
       let more_parts = try!(self.sock.get_rcvmore());
       if !more_parts {
-        println!("No more parts.");
         break;
       }
     }
@@ -152,11 +146,9 @@ impl TimedZMQTransaction {
 
   fn get_remaining_duration(&self, timeout: Option<Duration>) -> Duration {
     if self.time_to_die <= Instant::now() {
-      println!("Time's up.");
       Duration::new(0, 0)
     } else {
       let max_remaining = self.time_to_die.duration_since(Instant::now());
-      println!("max_remaining: {:?}", max_remaining);
       match timeout {
         Some(duration) => cmp::min(duration, max_remaining),
         None => max_remaining
@@ -209,7 +201,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   }));
   println!("Chunk size: {}", chunk_size);
 
-  on_progress("0");
+  on_progress("Progress: 0%");
 
   let mut data_cursor = 0;
   let mut chunks_requested = 0;
@@ -233,18 +225,23 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
       let data_end = cmp::min(data_start + chunk_size as usize, data_length as usize);
       let chunk = &data[data_start..data_end];
 
+      println!("Sending chunk...");
       try!(transactor.send_multipart(&[b"CHUNK", chunk], None));
+      println!("Sent.");
 
       hash.input(chunk);
       data_cursor = data_end as u64;
       chunks_requested -= 1;
 
-      let progress_percent_repr: String = format!("{}", 100 * data_end as u64 / data_length);
+      let progress_percent_repr: String = format!("Progress: {}%", 100 * data_end as u64 / data_length);
       on_progress(&progress_percent_repr);
     }
   }
 
-  try!(transactor.send_multipart(&[b"END", hash.result_bytes().as_slice()], None));
+  let hash_bytes = hash.result_bytes();
+  println!("Sending hash: {:?} ...", hash_bytes);
+  try!(transactor.send_multipart(&[b"END", hash_bytes.as_slice()], None));
+  println!("Sent.");
 
   loop {
     let result_parts = try!(transactor.recv_multipart(None));
@@ -271,7 +268,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
 fn main() {
   match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { println!("{}", s) }) {
-    Ok(result_bytes) => { println!("{}", result_bytes.len()); },
+    Ok(result_bytes) => { println!("{:?}", result_bytes); },
     Err(e) => {
       println!("Error: {}", e.description());
       panic!(e)
