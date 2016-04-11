@@ -2,6 +2,9 @@
 
 extern crate zmq;
 
+#[macro_use]
+extern crate log;
+
 use std::str;
 use std::error::Error;
 use std::fmt;
@@ -76,9 +79,24 @@ impl From<zmq::Error> for XactError {
 }
 
 struct TimedZMQTransaction {
-  _ctx: zmq::Context,
+  ctx: zmq::Context,
   sock: zmq::Socket,
   time_to_die: Instant
+}
+
+impl Drop for TimedZMQTransaction {
+  fn drop(&mut self) {
+    match self.sock.close_final() {
+      Ok(()) => { debug!("socket dropped") },
+      Err(e) => panic!(e)
+    }
+
+    debug!("dropping context.");
+    let mut e = self.ctx.destroy();
+    while e == Err(zmq::Error::EINTR) {
+      e = self.ctx.destroy();
+    }
+  }
 }
 
 impl TimedZMQTransaction {
@@ -91,7 +109,7 @@ impl TimedZMQTransaction {
     let now = Instant::now();
 
     Ok(TimedZMQTransaction {
-      _ctx: ctx,
+      ctx: ctx,
       sock: sock,
       time_to_die: now + timeout
     })
@@ -100,7 +118,7 @@ impl TimedZMQTransaction {
   pub fn send_multipart(&mut self, parts: &[&[u8]], timeout: Option<Duration>) -> Result<(), zmq::Error> {
     let poll_result = try!(self.poll(timeout, zmq::POLLOUT));
     if poll_result == 0 {
-      println!("Poll failed in send_multipart().");
+      warn!("Poll failed in send_multipart().");
       return Err(zmq::Error::EBUSY);
     }
 
@@ -115,7 +133,7 @@ impl TimedZMQTransaction {
   pub fn recv_multipart(&mut self, timeout: Option<Duration>) -> Result<Vec<Vec<u8>>, zmq::Error> {
     let poll_result = try!(self.poll(timeout, zmq::POLLIN));
     if poll_result == 0 {
-      println!("Poll failed in recv_multipart().");
+      warn!("Poll failed in recv_multipart().");
       return Err(zmq::Error::EBUSY);
     }
 
@@ -135,7 +153,7 @@ impl TimedZMQTransaction {
 
   pub fn poll(&mut self, timeout: Option<Duration>, events: i16) -> Result<i32, zmq::Error> {
     let timeout_ms = self.get_remaining_ms(timeout);
-    println!("About to poll for {} ms.", timeout_ms);
+    debug!("About to poll for {} ms.", timeout_ms);
     zmq::poll(&mut [self.sock.as_poll_item(events)], timeout_ms)
   }
 
@@ -165,14 +183,14 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
   let mut transactor = try!(TimedZMQTransaction::new(&endpoint, timeout));
 
-  print!("Sending PING...");
+  debug!("Sending PING...");
   let ping_timeout = Some(Duration::from_millis(500));
   try!(transactor.send_multipart(&[b"PING"], ping_timeout));
-  println!("Sent.");
+  debug!("Sent.");
 
-  print!("Receiving PING response...");
+  debug!("Receiving PING response...");
   let ping_response_parts = try!(transactor.recv_multipart(ping_timeout));
-  println!("Received.");
+  debug!("Received.");
 
   assert!(ping_response_parts.len() == 2, "PING response had wrong number of parts: {}", ping_response_parts.len());
   assert!(ping_response_parts[1] == b"PONG", "Invalid PING response");
@@ -181,14 +199,14 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   let data_size_str: String = format!("{}", data_length);
   let data_size_msg = data_size_str.as_bytes();
 
-  print!("Sending start message...");
+  debug!("Sending start message...");
   try!(transactor.send_multipart(&[b"START", blob_id.as_bytes(), data_size_msg], None));
-  println!("Sent.");
+  debug!("Sent.");
 
   print!("Waiting for start response...");
   let start_response_parts = try!(transactor.recv_multipart(None));
   assert!(start_response_parts.len() == 3, "{}", start_response_parts.len());
-  println!("Received.");
+  debug!("Received.");
 
   let chunk_size_msg = try!(match (start_response_parts[1].as_slice(), start_response_parts[2].as_slice()) {
     (b"NOGO", _) => Err(XactError::new(ErrorKind::NOGO, "Endpoint was not ready.")),
@@ -202,7 +220,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   let chunk_size = try!(chunk_size_str.parse::<u64>().map_err(|_| {
     XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse chunk size as integer")
   }));
-  println!("Chunk size: {}", chunk_size);
+  debug!("Chunk size: {}", chunk_size);
 
   on_progress("Progress: 0%");
 
@@ -219,7 +237,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
       match chunk_request_parts[1].as_slice() {
         b"TOKEN" => {
-          println!("Received chunk request.");
+          debug!("Received chunk request.");
           chunks_requested += 1;
         },
         _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk request")); }
@@ -231,9 +249,9 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
       let data_end = cmp::min(data_start + chunk_size as usize, data_length as usize);
       let chunk = &data[data_start..data_end];
 
-      println!("Sending chunk...");
+      debug!("Sending chunk...");
       try!(transactor.send_multipart(&[b"CHUNK", chunk], None));
-      println!("Sent.");
+      debug!("Sent.");
 
       hash.input(chunk);
       data_cursor = data_end as u64;
@@ -245,9 +263,9 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   }
 
   let hash_hex: String = hash.result_bytes().to_hex();
-  println!("Sending hash: {:?} ...", hash_hex);
+  debug!("Sending hash: {:?} ...", hash_hex);
   try!(transactor.send_multipart(&[b"END", hash_hex.as_bytes()], None));
-  println!("Sent.");
+  debug!("Sent.");
 
   loop {
     let result_parts = try!(transactor.recv_multipart(None));
@@ -255,11 +273,11 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
     match result_parts[1].as_slice() {
       b"TOKEN" => {
-        println!("Ignoring extra chunk request.");
+        debug!("Ignoring extra chunk request.");
         continue;
       },
       b"OK" => {
-        println!("Received OK message.");
+        debug!("Received OK message.");
         break;
       },
       _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid end response")); }
@@ -274,19 +292,19 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
     let res = result_parts[2].clone();
     Ok(res)
   } else {
-    println!("Exiting send_binary_blob().");
+    debug!("Exiting send_binary_blob().");
     Ok(vec![])
   }
 }
 
 fn main() {
-  match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { println!("{}", s) }) {
-    Ok(result_bytes) => { println!("Result: {:?}", result_bytes); },
+  match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { info!("{}", s) }) {
+    Ok(result_bytes) => { info!("Result: {:?}", result_bytes); },
     Err(e) => {
-      println!("Error: {}", e.description());
+      error!("Error: {}", e.description());
       panic!(e)
     }
   };
 
-  println!("Done.");
+  info!("Done.");
 }
