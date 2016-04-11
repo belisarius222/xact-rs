@@ -254,8 +254,14 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
     assert!(result_parts.len() >= 2, "{}", result_parts.len());
 
     match result_parts[1].as_slice() {
-      b"TOKEN" => { continue; },  // Ignore extra chunk requests.
-      b"OK" => { break; },
+      b"TOKEN" => {
+        println!("Ignoring extra chunk request.");
+        continue;
+      },
+      b"OK" => {
+        println!("Received OK message.");
+        break;
+      },
       _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid end response")); }
     }
   }
@@ -274,7 +280,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
 fn main() {
   match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { println!("{}", s) }) {
-    Ok(result_bytes) => { println!("{:?}", result_bytes); },
+    Ok(result_bytes) => { println!("Result: {:?}", result_bytes); },
     Err(e) => {
       println!("Error: {}", e.description());
       panic!(e)
