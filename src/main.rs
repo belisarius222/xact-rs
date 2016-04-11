@@ -274,6 +274,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
     let res = result_parts[2].clone();
     Ok(res)
   } else {
+    println!("Exiting send_binary_blob().");
     Ok(vec![])
   }
 }
