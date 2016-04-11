@@ -86,7 +86,7 @@ struct TimedZMQTransaction {
 
 impl Drop for TimedZMQTransaction {
   fn drop(&mut self) {
-    match self.sock.close_final() {
+    match self.sock.close() {
       Ok(()) => { debug!("socket dropped") },
       Err(e) => panic!(e)
     }
