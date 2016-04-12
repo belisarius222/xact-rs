@@ -239,7 +239,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 
     hash.input(chunk);
 
-    let progress_percent_repr: String = format!("Progress: {}%", 100 * (chunk_index * chunk_size + chunk.len() / data_length));
+    let progress_percent_repr: String = format!("Progress: {}%", 100 * (chunk_index * chunk_size + chunk.len()) / data_length);
     on_progress(&progress_percent_repr);
   }
 
