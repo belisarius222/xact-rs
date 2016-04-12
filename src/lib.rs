@@ -81,4 +81,4 @@ impl From<zmq::Error> for XactError {
 mod sender;
 pub use sender::send_binary_blob;
 
-mod receiver;
+// mod receiver;
