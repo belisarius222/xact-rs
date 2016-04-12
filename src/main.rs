@@ -279,7 +279,15 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
 }
 
 fn main() {
-  match send_binary_blob("tcp://127.0.0.1:1234", "message_id", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { info!("{}", s) }) {
+  match send_binary_blob("tcp://127.0.0.1:1234", "msg-0", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { info!("{}", s) }) {
+    Ok(result_bytes) => { info!("Result: {:?}", result_bytes); },
+    Err(e) => {
+      error!("Error: {}", e.description());
+      panic!(e)
+    }
+  };
+
+  match send_binary_blob("tcp://127.0.0.1:1234", "msg-1", vec![0x2a as u8; 1e8 as usize].as_slice(), Duration::from_millis(20000), false, |s| { info!("{}", s) }) {
     Ok(result_bytes) => { info!("Result: {:?}", result_bytes); },
     Err(e) => {
       error!("Error: {}", e.description());
