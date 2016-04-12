@@ -78,5 +78,7 @@ impl From<zmq::Error> for XactError {
   }
 }
 
-pub mod sender;
-pub mod receiver;
+mod sender;
+pub use xact::sender::send_binary_blob;
+
+mod receiver;
