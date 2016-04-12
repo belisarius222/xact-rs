@@ -1,5 +1,11 @@
 extern crate xact;
 
+#[macro_use]
+extern crate log;
+
+use std::error::Error;  // So we can use e.description()
+use std::time::Duration;
+
 #[test]
 fn send_small_string() {
   match xact::send_binary_blob("tcp://127.0.0.1:1234", "msg-0", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { info!("{}", s) }) {
