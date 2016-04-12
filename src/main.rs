@@ -66,10 +66,6 @@ impl XactError {
       full_desc: full_desc
     }
   }
-
-  fn from_zmq(e: zmq::Error, msg: &str) -> Self {
-    XactError::new(ErrorKind::ZMQ_ERROR(e), msg)
-  }
 }
 
 impl From<zmq::Error> for XactError {
@@ -195,7 +191,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   assert!(ping_response_parts.len() == 2, "PING response had wrong number of parts: {}", ping_response_parts.len());
   assert!(ping_response_parts[1] == b"PONG", "Invalid PING response");
 
-  let data_length = data.len() as u64;
+  let data_length = data.len();
   let data_size_str: String = format!("{}", data_length);
   let data_size_msg = data_size_str.as_bytes();
 
@@ -203,7 +199,7 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   try!(transactor.send_multipart(&[b"START", blob_id.as_bytes(), data_size_msg], None));
   debug!("Sent.");
 
-  print!("Waiting for start response...");
+  debug!("Waiting for start response...");
   let start_response_parts = try!(transactor.recv_multipart(None));
   assert!(start_response_parts.len() == 3, "{}", start_response_parts.len());
   debug!("Received.");
@@ -217,49 +213,34 @@ fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: Dura
   let chunk_size_str = try!(str::from_utf8(chunk_size_msg).map_err(|_| {
     XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse chunk size as utf8")
   }));
-  let chunk_size = try!(chunk_size_str.parse::<u64>().map_err(|_| {
+  let chunk_size = try!(chunk_size_str.parse::<usize>().map_err(|_| {
     XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse chunk size as integer")
   }));
   debug!("Chunk size: {}", chunk_size);
 
   on_progress("Progress: 0%");
 
-  let mut data_cursor = 0;
-  let mut chunks_requested = 0;
   let mut hash = Sha256::new();
 
-  while data_cursor < data_length {
-    let poll_timeout = Some(Duration::from_millis(500));
+  for (chunk_index, chunk) in data.chunks(chunk_size).enumerate() {
+    let chunk_request_parts = try!(transactor.recv_multipart(None));
+    assert!(chunk_request_parts.len() >= 2, "{}", chunk_request_parts.len());
 
-    while try!(transactor.poll(poll_timeout, zmq::POLLIN)) != 0 {
-      let chunk_request_parts = try!(transactor.recv_multipart(None));
-      assert!(chunk_request_parts.len() >= 2, "{}", chunk_request_parts.len());
+    match chunk_request_parts[1].as_slice() {
+      b"TOKEN" => {
+        debug!("Received chunk request.");
+      },
+      _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk request")); }
+    };
 
-      match chunk_request_parts[1].as_slice() {
-        b"TOKEN" => {
-          debug!("Received chunk request.");
-          chunks_requested += 1;
-        },
-        _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk request")); }
-      };
-    }
+    debug!("Sending chunk...");
+    try!(transactor.send_multipart(&[b"CHUNK", chunk], None));
+    debug!("Sent.");
 
-    while (chunks_requested > 0) && (data_cursor < data_length) {
-      let data_start = data_cursor as usize;
-      let data_end = cmp::min(data_start + chunk_size as usize, data_length as usize);
-      let chunk = &data[data_start..data_end];
+    hash.input(chunk);
 
-      debug!("Sending chunk...");
-      try!(transactor.send_multipart(&[b"CHUNK", chunk], None));
-      debug!("Sent.");
-
-      hash.input(chunk);
-      data_cursor = data_end as u64;
-      chunks_requested -= 1;
-
-      let progress_percent_repr: String = format!("Progress: {}%", 100 * data_end as u64 / data_length);
-      on_progress(&progress_percent_repr);
-    }
+    let progress_percent_repr: String = format!("Progress: {}%", 100 * (chunk_index * chunk_size + chunk.len() / data_length));
+    on_progress(&progress_percent_repr);
   }
 
   let hash_hex: String = hash.result_bytes().to_hex();
