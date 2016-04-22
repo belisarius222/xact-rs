@@ -235,11 +235,18 @@ impl<'a> BlobReceiver<'a> {
     let blob_hash = blob_hash_str.as_bytes();
     if hash_bytes != blob_hash {
       self.behavior.on_info("Checksum wrong. Sending FAIL.");
-      self.sock.send_multipart(&[sender_id, b"", b"FAIL", b"Hash mismatch."], 0);
+      self.sock.send_multipart(&[sender_id, b"", b"FAIL", b"Hash mismatch"], 0).unwrap_or_else(|_| ());
       self.abort_transaction(&sender_id);
+      return;
     }
 
+    self.sock.send_multipart(&[sender_id, b"", b"OK", b"Great success"], 0).unwrap_or_else(|e| {
+      debug!("OK message failed to send. Error: {:?}", e);
+    });
+    self.behavior.on_info("Sent OK.");
 
+    self.behavior.on_info("Queueing completion action.");
+    self.behavior.on_complete(&sender_id, &blob.array);
   }
 
   fn request_chunks(&mut self, sender_id: &[u8], num_chunks: usize) {
