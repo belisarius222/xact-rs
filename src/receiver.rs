@@ -53,9 +53,10 @@ impl Blob {
     Instant::now() + Duration::from_secs(BLOB_TTL_SECONDS)
   }
 
-  pub fn consume(&mut self, bytes: &mut Vec<u8>) {
-    self.array.append(bytes);
-    self.hash.input(bytes);
+  pub fn consume(&mut self, bytes: &[u8]) {
+    self.array.extend_from_slice(&bytes);
+    self.hash.input(&bytes);
+    self.update_ttl();
   }
 }
 
@@ -210,11 +211,26 @@ impl<'a> BlobReceiver<'a> {
   }
 
   fn do_chunk(&mut self, sender_id: &[u8], bytes: &[u8]) {
+    if !self.blobs.contains_key(&sender_id.to_vec()) {
+      debug!("Chunk with invalid sender_id: {:?}", &sender_id);
+      return;
+    }
 
+    let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
+    blob.consume(&bytes);
   }
 
   fn do_end(&mut self, sender_id: &[u8], hash_bytes: &[u8]) {
 
+  }
+
+  fn request_chunks(&mut self, sender_id: &[u8], num_chunks: usize) {
+    for i in 0..num_chunks {
+      if let Err(e) = self.sock.send_multipart(&[sender_id, b"", b"TOKEN"], 0) {
+        debug!("Chunk {} failed to send. Error: {:?}", i, e);
+        return;
+      }
+    }
   }
 
   fn abort_transaction(&mut self, sender_id: &[u8]) {
