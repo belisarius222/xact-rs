@@ -3,7 +3,7 @@
 extern crate xact;
 
 use xact::sender::{send_binary_blob};
-use xact::receiver::{BlobReceiver, BasicBlobReceiverBehavior, DEFAULT_CHUNK_SIZE};
+use xact::receiver::{BlobReceiver, BasicBlobReceiverBehavior, DEFAULT_CHUNK_SIZE, STOP};
 
 #[macro_use]
 extern crate log;
@@ -16,7 +16,7 @@ use std::sync::mpsc::channel;
 #[test]
 #[ignore]
 fn send_small_string() {
-  match xact::send_binary_blob("tcp://127.0.0.1:1234", "msg-0", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { info!("{}", s) }) {
+  match send_binary_blob("tcp://127.0.0.1:1234", "msg-0", "ermahgerd".as_bytes(), Duration::from_millis(2000), false, |s| { info!("{}", s) }) {
     Ok(result_bytes) => { info!("Result: {:?}", result_bytes); },
     Err(e) => {
       error!("Error: {}", xact::XactError::description(&e));
@@ -28,7 +28,7 @@ fn send_small_string() {
 #[test]
 #[ignore]
 fn send_big_vec() {
-  match xact::send_binary_blob("tcp://127.0.0.1:1234", "msg-1", vec![0x2a as u8; 1e8 as usize].as_slice(), Duration::from_millis(20000), false, |s| { info!("{}", s) }) {
+  match send_binary_blob("tcp://127.0.0.1:1234", "msg-1", vec![0x2a as u8; 1e8 as usize].as_slice(), Duration::from_millis(20000), false, |s| { info!("{}", s) }) {
     Ok(result_bytes) => { info!("Result: {:?}", result_bytes); },
     Err(e) => {
       error!("Error: {}", xact::XactError::description(&e));
@@ -39,7 +39,7 @@ fn send_big_vec() {
 
 #[test]
 fn recv_big_vec() {
-  let (rx, tx) = channel::<bool>();
+  let (rx, tx) = channel();
 
   let recv_handle = thread::spawn(move || {
     let behavior = BasicBlobReceiverBehavior {};
@@ -55,6 +55,6 @@ fn recv_big_vec() {
     }
   };
 
-  tx.send(true);
+  tx.send(STOP);
   recv_handle.join().unwrap();
 }

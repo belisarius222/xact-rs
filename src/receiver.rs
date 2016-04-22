@@ -19,10 +19,10 @@ use std::collections::HashMap;
 use std::marker::{Send, Sized};
 
 const BLOB_TTL_SECONDS: u64 = 10;
-const DEFAULT_CHUNK_SIZE: usize = 1e7 as usize;
+pub const DEFAULT_CHUNK_SIZE: usize = 1e7 as usize;
 const MAX_SIMUL_CHUNKS: u32 = 10;
 const MSG_PADDING: usize = 100;
-const STOP: bool = true;
+pub const STOP: bool = true;
 
 pub struct Blob {
   pub id: Vec<u8>,
