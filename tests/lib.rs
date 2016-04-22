@@ -39,7 +39,7 @@ fn send_big_vec() {
 
 #[test]
 fn recv_big_vec() {
-  let (rx, tx) = channel();
+  let (tx, rx) = channel();
 
   let recv_handle = thread::spawn(move || {
     let behavior = BasicBlobReceiverBehavior {};
