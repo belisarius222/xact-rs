@@ -128,16 +128,18 @@ impl<'a> BlobReceiver<'a> {
     })
   }
 
-  pub fn run(&mut self) -> Result<(), XactError> {
+  pub fn run(&mut self, stop_rx: ChannelReceiver<bool>) {
     loop {
       self.prune_dead_blobs();
       self.send_cons_msgs();
 
-      if try!(zmq::poll(&mut [self.sock.as_poll_item(zmq::POLLIN)], 50)) == 0 {
+      let poll_result = self.sock.poll(zmq::POLLIN, 50);
+      if poll_result.is_err() && poll_result.unwrap() == 0 {
         continue;
       }
 
-      let responses = try!(self.sock.recv_multipart(0));
+      // NOTE: This will panic if the socket receives an error.
+      let responses = self.sock.recv_multipart(0).unwrap();
 
       let responses_map: Vec<&[u8]> = responses.iter().map(|p| p.as_slice()).collect();
 
@@ -156,12 +158,13 @@ impl<'a> BlobReceiver<'a> {
           self.do_end(&sender_id, &hash_bytes);
         },
         parts => {
-          let err_msg = format!("Wrong number of responses: {}", parts.len());
-          return Err(XactError::new(ErrorKind::INVALID_RESPONSE, &err_msg));
+          debug!("Wrong number of responses: {}", parts.len());
         }
       };
 
-      // TODO: Add stop handler here.
+      if stop_rx.try_recv().is_ok() {
+        break;
+      }
     }
   }
 

@@ -90,7 +90,5 @@ pub fn bytes_to_int(bytes: &[u8]) -> Result<usize, XactError> {
   Ok(res)
 }
 
-mod sender;
-pub use sender::send_binary_blob;
-
+pub mod sender;
 pub mod receiver;
