@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["Ted Blackman <ted.blackman@gmail.com>"]
 
 [dependencies]
-zmq = { git = "https://github.com/erickt/rust-zmq.git" }
+zmq = { git = "https://github.com/belisarius222/rust-zmq.git" }

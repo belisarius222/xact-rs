@@ -1,4 +1,4 @@
-#![feature(rustc_private)]
+#![feature(rustc_private, slice_patterns)]
 
 extern crate zmq;
 
@@ -58,7 +58,7 @@ impl std::error::Error for XactError {
 }
 
 impl XactError {
-  fn new(kind: ErrorKind, msg: &str) -> Self {
+  fn new(kind: ErrorKind, msg: &str) -> XactError {
     let full_desc = format!("Error of type: {}, msg: '{}'", kind, msg);
     XactError {
       kind: kind,
@@ -67,7 +67,7 @@ impl XactError {
     }
   }
 
-  fn from_zmq(e: zmq::Error, msg: &str) -> Self {
+  fn from_zmq(e: zmq::Error, msg: &str) -> XactError {
     XactError::new(ErrorKind::ZMQ_ERROR(e), msg)
   }
 }
@@ -78,7 +78,19 @@ impl From<zmq::Error> for XactError {
   }
 }
 
+pub fn bytes_to_int(bytes: &[u8]) -> Result<usize, XactError> {
+  let int_str = try!(str::from_utf8(bytes).map_err(|_| {
+    XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse bytes as utf-8")
+  }));
+
+  let res = try!(int_str.parse::<usize>().map_err(|_| {
+    XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse string as integer")
+  }));
+
+  Ok(res)
+}
+
 mod sender;
 pub use sender::send_binary_blob;
 
-// mod receiver;
+pub mod receiver;

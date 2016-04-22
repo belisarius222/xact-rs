@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serialize::hex::ToHex;
 use rustc::util::sha2::{Sha256, Digest};
 
-use super::{ErrorKind, XactError};
+use super::{bytes_to_int, ErrorKind, XactError};
 
 struct TimedZMQTransaction {
   ctx: zmq::Context,
@@ -147,12 +147,7 @@ pub fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: 
     (_, _) => Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk size"))
   });
 
-  let chunk_size_str = try!(str::from_utf8(chunk_size_msg).map_err(|_| {
-    XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse chunk size as utf8")
-  }));
-  let chunk_size = try!(chunk_size_str.parse::<usize>().map_err(|_| {
-    XactError::new(ErrorKind::INVALID_RESPONSE, "Unable to parse chunk size as integer")
-  }));
+  let chunk_size = try!(bytes_to_int(chunk_size_msg));
   debug!("Chunk size: {}", chunk_size);
 
   on_progress("Progress: 0%");
