@@ -33,10 +33,11 @@ pub struct Blob {
 
 impl Blob {
   pub fn new(id: &[u8], array_size: usize) -> Blob {
+    let mut hash = Sha256::new();
     Blob {
       id: id.to_vec(),
       array: Vec::with_capacity(array_size),
-      hash: Sha256::new(),
+      hash: hash,
       time_to_die: Blob::get_next_ttl()
     }
   }
@@ -221,6 +222,23 @@ impl<'a> BlobReceiver<'a> {
   }
 
   fn do_end(&mut self, sender_id: &[u8], hash_bytes: &[u8]) {
+    let blob_or_none = self.blobs.remove(&sender_id.to_vec());
+    if blob_or_none.is_none() {
+      let msg = format!("END with invalid sender_id: {:?}. Ignoring.", &sender_id);
+      self.behavior.on_info(&msg);
+      return;
+    }
+    let mut blob = blob_or_none.unwrap();
+
+    self.behavior.on_info("Checking hash.");
+    let blob_hash_str = blob.hash.result_bytes().to_hex();
+    let blob_hash = blob_hash_str.as_bytes();
+    if hash_bytes != blob_hash {
+      self.behavior.on_info("Checksum wrong. Sending FAIL.");
+      self.sock.send_multipart(&[sender_id, b"", b"FAIL", b"Hash mismatch."], 0);
+      self.abort_transaction(&sender_id);
+    }
+
 
   }
 
