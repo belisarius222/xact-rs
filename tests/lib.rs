@@ -43,7 +43,7 @@ fn recv_big_vec() {
 
   let recv_handle = thread::spawn(move || {
     let behavior = BasicBlobReceiverBehavior {};
-    let receiver = BlobReceiver::new("tcp://*:1234", DEFAULT_CHUNK_SIZE, behavior).unwrap();
+    let mut receiver = BlobReceiver::new("tcp://*:1234", DEFAULT_CHUNK_SIZE, behavior).unwrap();
     receiver.run(rx);
   });
 
