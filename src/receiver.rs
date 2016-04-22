@@ -59,7 +59,7 @@ impl Blob {
   }
 }
 
-pub trait BlobReceiverBehavior: Sized {
+pub trait BlobReceiverBehavior {
   fn on_ready(&mut self, data_size: usize) -> bool;
   fn on_info(&mut self, msg: &str);
   fn on_complete(&mut self, id: &[u8], array: &[u8]);
@@ -81,17 +81,17 @@ impl BlobReceiverBehavior for BasicBlobReceiverBehavior {
   }
 }
 
-pub struct BlobReceiver<'a, B: BlobReceiverBehavior + 'a> {
+pub struct BlobReceiver<'a> {
   pub bind_address: String,
   pub chunk_size: usize,
   blobs: HashMap<Vec<u8>, Blob>,  // sender_id to blob
   ctx: zmq::Context,
   sock: zmq::Socket,
-  pub behavior: Box<B + 'a>
+  pub behavior: Box<BlobReceiverBehavior + 'a>
 }
 
 // TODO: Merge this with the Drop impl for TimedZMQTransaction.
-impl<'a> Drop for BlobReceiver<'a, BlobReceiverBehavior + 'a> {
+impl<'a> Drop for BlobReceiver<'a> {
   fn drop(&mut self) {
     match self.sock.close() {
       Ok(()) => { debug!("Socket dropped") },
@@ -106,8 +106,8 @@ impl<'a> Drop for BlobReceiver<'a, BlobReceiverBehavior + 'a> {
   }
 }
 
-impl<'a> BlobReceiver<'a, BlobReceiverBehavior + 'a> {
-  pub fn new<B: BlobReceiverBehavior + 'a>(bind_address: &str, chunk_size: usize, b: B) -> Result<BlobReceiver<'a, BlobReceiverBehavior + 'a>, XactError> {
+impl<'a> BlobReceiver<'a> {
+  pub fn new<B: BlobReceiverBehavior + 'a>(bind_address: &str, chunk_size: usize, b: B) -> Result<BlobReceiver<'a>, XactError> {
     let mut ctx = zmq::Context::new();  // TODO set threads to 2
     let mut sock = try!(ctx.socket(zmq::ROUTER));
     try!(sock.set_linger(0));
@@ -186,7 +186,6 @@ impl<'a> BlobReceiver<'a, BlobReceiverBehavior + 'a> {
   fn do_ping(&mut self, sender_id: &[u8]) {
     self.sock.send_multipart(&[sender_id, b"", b"PONG"], 0).unwrap_or_else(|e| {
       debug!("Error responding to PING: {:?}", e);
-      self.abort_transaction(&sender_id);
     });
   }
 
@@ -199,9 +198,9 @@ impl<'a> BlobReceiver<'a, BlobReceiverBehavior + 'a> {
     }
     let data_size = parse_result.unwrap();
 
-    if !(*self.behavior).on_ready(data_size) {
+    if !self.behavior.on_ready(data_size) {
       self.sock.send_multipart(&[sender_id, b"", b"NOGO", b"0"], 0).unwrap();
-      (&self.behavior).on_info("Not ready. NOGO sent.");
+      self.behavior.on_info("Not ready. NOGO sent.");
       return;
     }
 
