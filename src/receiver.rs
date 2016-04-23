@@ -178,7 +178,7 @@ impl<'a> BlobReceiver<'a> {
                               .map(|k| k.to_owned())
                               .filter(|sender_id| {
       let blob = blobs.get(sender_id).unwrap();
-      blob.is_alive()
+      !blob.is_alive()
     }).collect::<Vec<Vec<u8>>>();
 
     for key in keys_to_remove {
