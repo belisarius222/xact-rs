@@ -259,9 +259,7 @@ impl<'a> BlobReceiver<'a> {
       let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
       {
         let chunk_buf = &mut blob.array[blob.index..blob.index + self.chunk_size];
-
-        let start = Instant::now();
-
+        debug!("About to start receiving into blob at index: {}", blob.index);
         self.sock.recv_into(chunk_buf, 0).unwrap_or_else(|e| {
           debug!("Error receiving chunk data: {:?}", e);
         });
