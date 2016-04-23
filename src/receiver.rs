@@ -144,7 +144,7 @@ impl<'a> BlobReceiver<'a> {
       self.send_cons_msgs();
 
       let poll_result = self.sock.poll(zmq::POLLIN, 50);
-      if poll_result.is_err() && poll_result.unwrap() == 0 {
+      if poll_result.is_err() || poll_result.unwrap() == 0 {
         continue;
       }
 
