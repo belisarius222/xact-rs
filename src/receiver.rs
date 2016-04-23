@@ -145,16 +145,19 @@ impl<'a> BlobReceiver<'a> {
 
       match responses_map.as_slice() {
         [ref sender_id, b"PING"] => {
-          println!("RECV PING");
+          debug!("RECV PING");
           self.do_ping(&sender_id);
         },
         [ref sender_id, b"START", ref blob_id, ref data_size] => {
+          debug!("RECV START");
           self.do_start(&sender_id, &blob_id, &data_size);
         },
         [ref sender_id, b"CHUNK", ref bytes] => {
+          debug!("RECV CHUNK");
           self.do_chunk(&sender_id, &bytes);
         },
         [ref sender_id, b"END", ref hash_bytes] => {
+          debug!("RECV END");
           self.do_end(&sender_id, &hash_bytes);
         },
         parts => {
@@ -179,7 +182,7 @@ impl<'a> BlobReceiver<'a> {
     }).collect::<Vec<Vec<u8>>>();
 
     for key in keys_to_remove {
-      println!("Removing dead blob: {:?}", key);
+      debug!("Removing dead blob: {:?}", key);
       blobs.remove(&key);
     }
   }
@@ -212,6 +215,7 @@ impl<'a> BlobReceiver<'a> {
     let blob = Blob::new(&blob_id, data_size);
     let mut blobs = &mut self.blobs;
     blobs.insert(sender_id.to_vec(), blob);
+    self.behavior.on_info("Created new blob.");
   }
 
   fn do_chunk(&mut self, sender_id: &[u8], bytes: &[u8]) {
@@ -222,6 +226,7 @@ impl<'a> BlobReceiver<'a> {
 
     let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
     blob.consume(&bytes);
+    self.behavior.on_info("Appended chunk to blob.");
   }
 
   fn do_end(&mut self, sender_id: &[u8], hash_bytes: &[u8]) {
@@ -258,6 +263,7 @@ impl<'a> BlobReceiver<'a> {
         debug!("Chunk {} failed to send. Error: {:?}", i, e);
         return;
       }
+      self.behavior.on_info("Requested chunk.");
     }
   }
 
