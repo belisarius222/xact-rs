@@ -55,8 +55,21 @@ impl Blob {
   }
 
   pub fn consume(&mut self, bytes: &[u8]) {
+    let start = Instant::now();
     self.array.extend_from_slice(&bytes);
+
+    let after_extend = Instant::now();
+    let extend_duration = after_extend - start;
+    let extend_ms = extend_duration.as_secs() * 1000 + (extend_duration.subsec_nanos() as f64 / 1e6) as u64;
+    debug!("Extended blob by {} bytes in {} ms.", bytes.len(), extend_ms);
+
     self.hash.input(&bytes);
+
+    let after_hash = Instant::now();
+    let hash_duration = after_hash - after_extend;
+    let hash_ms = hash_duration.as_secs() * 1000 + (hash_duration.subsec_nanos() as f64 / 1e6) as u64;
+    debug!("Updated blob hash in {} ms.", hash_ms);
+
     self.update_ttl();
   }
 }
