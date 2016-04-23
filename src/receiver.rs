@@ -35,8 +35,7 @@ pub struct Blob {
 impl Blob {
   pub fn new(id: &[u8], array_size: usize) -> Blob {
     let mut hash = Sha256::new();
-    let mut array = Vec::with_capacity(array_size);
-    array.set_len(array_size);
+    let mut array = vec![0; array_size];
     Blob {
       id: id.to_vec(),
       array: array,
