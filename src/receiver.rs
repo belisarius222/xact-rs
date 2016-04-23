@@ -27,6 +27,7 @@ pub const STOP: bool = true;
 pub struct Blob {
   pub id: Vec<u8>,
   pub array: Vec<u8>,
+  pub index: usize,
   pub hash: Sha256,
   time_to_die: Instant
 }
@@ -37,6 +38,7 @@ impl Blob {
     Blob {
       id: id.to_vec(),
       array: Vec::with_capacity(array_size),
+      index: 0,
       hash: hash,
       time_to_die: Blob::get_next_ttl()
     }
@@ -54,14 +56,14 @@ impl Blob {
     Instant::now() + Duration::from_secs(BLOB_TTL_SECONDS)
   }
 
+  pub fn get_next_chunk(&mut self, chunk_size: usize) -> &mut [u8] {
+    &mut self.array[self.index..self.index + chunk_size]
+  }
+
   pub fn consume(&mut self, bytes: &[u8]) {
     let start = Instant::now();
     self.array.extend_from_slice(&bytes);
 
-    let after_extend = Instant::now();
-    let extend_duration = after_extend - start;
-    let extend_ms = extend_duration.as_secs() * 1000 + (extend_duration.subsec_nanos() as f64 / 1e6) as u64;
-    info!("Extended blob by {} bytes in {} ms.", bytes.len(), extend_ms);
 
     self.hash.input(&bytes);
     self.update_ttl();
@@ -145,30 +147,28 @@ impl<'a> BlobReceiver<'a> {
         continue;
       }
 
-      // NOTE: This will panic if the socket receives an error.
-      let responses = self.sock.recv_multipart(0).unwrap();
-
-      let responses_map: Vec<&[u8]> = responses.iter().map(|p| p.as_slice()).collect();
-
-      match responses_map.as_slice() {
-        [ref sender_id, b"PING"] => {
+      // TODO: Error-handling for these calls.
+      let sender_id = self.sock.recv_bytes(0).unwrap();
+      let cmd_bytes = self.sock.recv_bytes(0).unwrap();
+      match cmd_bytes.as_slice() {
+        b"PING" => {
           debug!("RECV PING");
           self.do_ping(&sender_id);
         },
-        [ref sender_id, b"START", ref blob_id, ref data_size] => {
+        b"START" => {
           debug!("RECV START");
-          self.do_start(&sender_id, &blob_id, &data_size);
+          self.do_start(&sender_id);
         },
-        [ref sender_id, b"CHUNK", ref bytes] => {
+        b"CHUNK" => {
           debug!("RECV CHUNK");
-          self.do_chunk(&sender_id, &bytes);
+          self.do_chunk(&sender_id);
         },
-        [ref sender_id, b"END", ref hash_bytes] => {
+        b"END" => {
           debug!("RECV END");
-          self.do_end(&sender_id, &hash_bytes);
+          self.do_end(&sender_id);
         },
-        parts => {
-          debug!("Wrong number of responses: {}", parts.len());
+        ref res => {
+          debug!("RECV invalid: {:?}", res);
         }
       };
 
@@ -200,13 +200,16 @@ impl<'a> BlobReceiver<'a> {
   }
 
   fn do_ping(&mut self, sender_id: &[u8]) {
-    self.sock.send_multipart(&[sender_id, b"", b"PONG"], 0).unwrap_or_else(|e| {
+    if let Err(e) = self.sock.send_multipart(&[sender_id, b"", b"PONG"], 0) {
       debug!("Error responding to PING: {:?}", e);
-    });
+    }
   }
 
-  fn do_start(&mut self, sender_id: &[u8], blob_id: &[u8], data_size: &[u8]) {
-    let parse_result = bytes_to_int(data_size);
+  fn do_start(&mut self, sender_id: &[u8]) {
+    let blob_id = self.sock.recv_bytes(0).unwrap();
+    let data_size_bytes = self.sock.recv_bytes(0).unwrap();
+
+    let parse_result = bytes_to_int(data_size_bytes.as_slice());
     if parse_result.is_err() {
       debug!("Invalid START request. Aborting transaction.");
       self.abort_transaction(&sender_id);
@@ -215,11 +218,11 @@ impl<'a> BlobReceiver<'a> {
     let data_size = parse_result.unwrap();
 
     if !self.behavior.on_ready(data_size) {
-      self.sock.send_multipart(&[sender_id, b"", b"NOGO", b"0"], 0).unwrap_or_else(|_| {
+      if self.sock.send_multipart(&[sender_id, b"", b"NOGO", b"0"], 0).is_err() {
         debug!("Error sending NOGO message. Ignoring.");
-      });
-      self.behavior.on_info("Not ready. NOGO sent.");
+      }
       return;
+      self.behavior.on_info("Not ready. NOGO sent.");
     }
 
     let blob = Blob::new(&blob_id, data_size);
@@ -244,7 +247,7 @@ impl<'a> BlobReceiver<'a> {
     self.request_chunks(&sender_id, MAX_SIMUL_CHUNKS);
   }
 
-  fn do_chunk(&mut self, sender_id: &[u8], bytes: &[u8]) {
+  fn do_chunk(&mut self, sender_id: &[u8]) {
     if !self.blobs.contains_key(&sender_id.to_vec()) {
       debug!("Chunk with invalid sender_id: {:?}", &sender_id);
       return;
@@ -252,15 +255,48 @@ impl<'a> BlobReceiver<'a> {
 
     // Do this in a new scope to allow more mutable borrows of self later.
     {
+      let start = Instant::now();
       let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
-      blob.consume(&bytes);
+      {
+        let chunk_buf = &mut blob.array[blob.index..blob.index + self.chunk_size];
+
+        let start = Instant::now();
+
+        self.sock.recv_into(chunk_buf, 0).unwrap_or_else(|e| {
+          debug!("Error receiving chunk data: {:?}", e);
+        });
+      }
+
+      let duration = Instant::now() - start;
+      let ms = duration.as_secs() * 1000 + (duration.subsec_nanos() as f64 / 1e6) as u64;
+      let msg = format!("Received {} bytes in {} ms.", self.chunk_size, ms);
+      self.behavior.on_info(&msg);
+
+      {
+        let chunk_buf_immutable = &blob.array[blob.index..blob.index + self.chunk_size];
+        blob.hash.input(chunk_buf_immutable);
+        blob.index += self.chunk_size;
+      }
+      blob.update_ttl();
     }
     self.behavior.on_info("Appended chunk to blob.");
 
     self.request_chunks(&sender_id, 1);
   }
 
-  fn do_end(&mut self, sender_id: &[u8], hash_bytes: &[u8]) {
+  fn do_end(&mut self, sender_id: &[u8]) {
+    let hash_vec = match self.sock.recv_bytes(0) {
+      Ok(hash_vec) => {
+        hash_vec
+      },
+      Err(e) => {
+        debug!("Error receiving hash bytes: {:?}", e);
+        self.abort_transaction(&sender_id);
+        return;
+      }
+    };
+    let hash_bytes = hash_vec.as_slice();
+
     let blob_or_none = self.blobs.remove(&sender_id.to_vec());
     if blob_or_none.is_none() {
       let msg = format!("END with invalid sender_id: {:?}. Ignoring.", &sender_id);
