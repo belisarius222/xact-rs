@@ -35,9 +35,11 @@ pub struct Blob {
 impl Blob {
   pub fn new(id: &[u8], array_size: usize) -> Blob {
     let mut hash = Sha256::new();
+    let mut array = Vec::with_capacity(array_size);
+    array.set_len(array_size);
     Blob {
       id: id.to_vec(),
-      array: Vec::with_capacity(array_size),
+      array: array,
       index: 0,
       hash: hash,
       time_to_die: Blob::get_next_ttl()
@@ -221,8 +223,8 @@ impl<'a> BlobReceiver<'a> {
       if self.sock.send_multipart(&[sender_id, b"", b"NOGO", b"0"], 0).is_err() {
         debug!("Error sending NOGO message. Ignoring.");
       }
-      return;
       self.behavior.on_info("Not ready. NOGO sent.");
+      return;
     }
 
     let blob = Blob::new(&blob_id, data_size);
@@ -259,7 +261,6 @@ impl<'a> BlobReceiver<'a> {
       let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
       {
         let chunk_buf = &mut blob.array[blob.index..blob.index + self.chunk_size];
-        debug!("About to start receiving into blob at index: {}", blob.index);
         self.sock.recv_into(chunk_buf, 0).unwrap_or_else(|e| {
           debug!("Error receiving chunk data: {:?}", e);
         });
