@@ -61,15 +61,9 @@ impl Blob {
     let after_extend = Instant::now();
     let extend_duration = after_extend - start;
     let extend_ms = extend_duration.as_secs() * 1000 + (extend_duration.subsec_nanos() as f64 / 1e6) as u64;
-    debug!("Extended blob by {} bytes in {} ms.", bytes.len(), extend_ms);
+    info!("Extended blob by {} bytes in {} ms.", bytes.len(), extend_ms);
 
     self.hash.input(&bytes);
-
-    let after_hash = Instant::now();
-    let hash_duration = after_hash - after_extend;
-    let hash_ms = hash_duration.as_secs() * 1000 + (hash_duration.subsec_nanos() as f64 / 1e6) as u64;
-    debug!("Updated blob hash in {} ms.", hash_ms);
-
     self.update_ttl();
   }
 }
@@ -88,11 +82,11 @@ impl BlobReceiverBehavior for BasicBlobReceiverBehavior {
   }
 
   fn on_info(&mut self, msg: &str) {
-    debug!("{}", msg);
+    info!("{}", msg);
   }
 
   fn on_complete(&mut self, id: &[u8], array: &[u8]) {
-    debug!("Blob id: {:?} complete. Size: {} bytes.", id, array.len());
+    info!("Blob id: {:?} complete. Size: {} bytes.", id, array.len());
   }
 }
 
