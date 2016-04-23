@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serialize::hex::ToHex;
 use rustc::util::sha2::{Sha256, Digest};
 
-use super::{bytes_to_int, ErrorKind, XactError};
+use super::{bytes_to_int, ErrorKind, int_to_bytes, XactError};
 
 use std::thread;
 use std::sync::mpsc::{channel, SendError};
@@ -166,6 +166,7 @@ impl<'a> BlobReceiver<'a> {
       };
 
       if stop_rx.try_recv().is_ok() {
+        self.behavior.on_info("Received shutdown signal. Exiting.");
         break;
       }
     }
@@ -207,7 +208,9 @@ impl<'a> BlobReceiver<'a> {
     let data_size = parse_result.unwrap();
 
     if !self.behavior.on_ready(data_size) {
-      self.sock.send_multipart(&[sender_id, b"", b"NOGO", b"0"], 0).unwrap();
+      self.sock.send_multipart(&[sender_id, b"", b"NOGO", b"0"], 0).unwrap_or_else(|_| {
+        debug!("Error sending NOGO message. Ignoring.");
+      });
       self.behavior.on_info("Not ready. NOGO sent.");
       return;
     }
@@ -219,6 +222,18 @@ impl<'a> BlobReceiver<'a> {
       blobs.insert(sender_id.to_vec(), blob);
     }
     self.behavior.on_info("Created new blob.");
+
+    let chunk_size_vec = int_to_bytes(self.chunk_size);
+    let chunk_size_bytes = chunk_size_vec.as_slice();
+
+    let send_result = self.sock.send_multipart(&[sender_id, b"", b"GOGO", chunk_size_bytes], 0);
+    send_result.unwrap_or_else(|e| {
+      let err_msg = format!("Error sending GOGO message: {:?}. Aborting transaction.", e);
+      self.behavior.on_info(&err_msg);
+      self.abort_transaction(&sender_id);
+      return;
+    });
+
     self.request_chunks(&sender_id, MAX_SIMUL_CHUNKS);
   }
 

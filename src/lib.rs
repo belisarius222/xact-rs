@@ -90,5 +90,9 @@ pub fn bytes_to_int(bytes: &[u8]) -> Result<usize, XactError> {
   Ok(res)
 }
 
+pub fn int_to_bytes(num: usize) -> Vec<u8> {
+  format!("{}", num).as_bytes().to_vec()
+}
+
 pub mod sender;
 pub mod receiver;
