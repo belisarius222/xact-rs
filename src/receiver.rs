@@ -216,6 +216,8 @@ impl<'a> BlobReceiver<'a> {
     let mut blobs = &mut self.blobs;
     blobs.insert(sender_id.to_vec(), blob);
     self.behavior.on_info("Created new blob.");
+
+    self.request_chunks(&sender_id, MAX_SIMUL_CHUNKS);
   }
 
   fn do_chunk(&mut self, sender_id: &[u8], bytes: &[u8]) {
