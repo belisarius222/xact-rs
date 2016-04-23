@@ -20,7 +20,7 @@ use std::marker::{Send, Sized};
 
 const BLOB_TTL_SECONDS: u64 = 10;
 pub const DEFAULT_CHUNK_SIZE: usize = 1e7 as usize;
-const MAX_SIMUL_CHUNKS: u32 = 10;
+const MAX_SIMUL_CHUNKS: usize = 10;
 const MSG_PADDING: usize = 100;
 pub const STOP: bool = true;
 
@@ -213,10 +213,12 @@ impl<'a> BlobReceiver<'a> {
     }
 
     let blob = Blob::new(&blob_id, data_size);
-    let mut blobs = &mut self.blobs;
-    blobs.insert(sender_id.to_vec(), blob);
+    // Do this in a new scope to allow more mutable borrows of self later.
+    {
+      let mut blobs = &mut self.blobs;
+      blobs.insert(sender_id.to_vec(), blob);
+    }
     self.behavior.on_info("Created new blob.");
-
     self.request_chunks(&sender_id, MAX_SIMUL_CHUNKS);
   }
 
@@ -226,9 +228,14 @@ impl<'a> BlobReceiver<'a> {
       return;
     }
 
-    let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
-    blob.consume(&bytes);
+    // Do this in a new scope to allow more mutable borrows of self later.
+    {
+      let mut blob = self.blobs.get_mut(&sender_id.to_vec()).unwrap();
+      blob.consume(&bytes);
+    }
     self.behavior.on_info("Appended chunk to blob.");
+
+    self.request_chunks(&sender_id, 1);
   }
 
   fn do_end(&mut self, sender_id: &[u8], hash_bytes: &[u8]) {
