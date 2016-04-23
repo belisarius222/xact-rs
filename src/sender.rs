@@ -119,33 +119,33 @@ pub fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: 
   debug!("Sending PING...");
   let ping_timeout = Some(Duration::from_millis(500));
   try!(transactor.send_multipart(&[b"PING"], ping_timeout));
-  debug!("Sent.");
+  debug!("\tSent PING.");
 
-  debug!("Receiving PING response...");
+  debug!("Waiting for PONG...");
   let ping_response_parts = try!(transactor.recv_multipart(ping_timeout));
-  debug!("Received.");
 
   assert!(ping_response_parts.len() == 2, "PING response had wrong number of parts: {}", ping_response_parts.len());
   assert!(ping_response_parts[1] == b"PONG", "Invalid PING response");
+  debug!("\tReceived PONG.");
 
   let data_length = data.len();
   let data_size_str: String = format!("{}", data_length);
   let data_size_msg = data_size_str.as_bytes();
 
-  debug!("Sending start message...");
+  debug!("Sending START...");
   try!(transactor.send_multipart(&[b"START", blob_id.as_bytes(), data_size_msg], None));
-  debug!("Sent.");
+  debug!("\tSent START.");
 
-  debug!("Waiting for start response...");
+  debug!("Waiting for GOGO ...");
   let start_response_parts = try!(transactor.recv_multipart(None));
   assert!(start_response_parts.len() == 3, "{}", start_response_parts.len());
-  debug!("Received.");
 
   let chunk_size_msg = try!(match (start_response_parts[1].as_slice(), start_response_parts[2].as_slice()) {
     (b"NOGO", _) => Err(XactError::new(ErrorKind::NOGO, "Endpoint was not ready.")),
     (b"GOGO", chunk_size_bytes) => Ok(chunk_size_bytes),
     (_, _) => Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk size"))
   });
+  debug!("\tReceived GOGO.");
 
   let chunk_size = try!(bytes_to_int(chunk_size_msg));
   debug!("Chunk size: {}", chunk_size);
@@ -155,19 +155,20 @@ pub fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: 
   let mut hash = Sha256::new();
 
   for (chunk_index, chunk) in data.chunks(chunk_size).enumerate() {
+    debug!("Waiting for TOKEN...");
     let chunk_request_parts = try!(transactor.recv_multipart(None));
     assert!(chunk_request_parts.len() >= 2, "{}", chunk_request_parts.len());
 
     match chunk_request_parts[1].as_slice() {
       b"TOKEN" => {
-        debug!("Received chunk request.");
+        debug!("\tReceived TOKEN.");
       },
       _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid chunk request")); }
     };
 
     debug!("Sending chunk...");
     try!(transactor.send_multipart(&[b"CHUNK", chunk], None));
-    debug!("Sent.");
+    debug!("\tSent chunk.");
 
     hash.input(chunk);
 
@@ -178,9 +179,10 @@ pub fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: 
   let hash_hex: String = hash.result_bytes().to_hex();
   debug!("Sending hash: {:?} ...", hash_hex);
   try!(transactor.send_multipart(&[b"END", hash_hex.as_bytes()], None));
-  debug!("Sent.");
+  debug!("\tSent hash.");
 
   loop {
+    debug!("Waiting for OK...");
     let result_parts = try!(transactor.recv_multipart(None));
     assert!(result_parts.len() >= 2, "{}", result_parts.len());
 
@@ -190,7 +192,7 @@ pub fn send_binary_blob<F>(endpoint: &str, blob_id: &str, data: &[u8], timeout: 
         continue;
       },
       b"OK" => {
-        debug!("Received OK message.");
+        debug!("\tReceived OK.");
         break;
       },
       _ => { return Err(XactError::new(ErrorKind::INVALID_RESPONSE, "Invalid end response")); }
